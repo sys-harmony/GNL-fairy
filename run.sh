@@ -42,8 +42,10 @@ BONUS_BUILD_RES=0
 BONUS_RUN_RES=0
 
 # ---- alignment helpers ------------------------------------------------------
-# \033[44G jumps the cursor to absolute column 34 on the current line,
-# regardless of label length or emoji width — no more tab arithmetic.
+# Status words are right-aligned to a fixed column with \033[<n>G (absolute
+# cursor column), so emoji width and label length never shift them. "Failed"
+# (6 chars) starts at COL; shorter words ("Done", "Bonus", "Mandatory") use a
+# larger start column so they all end at the same place — no tab arithmetic.
 COL=37
 ok()   { printf "\033[${COL}G  Done\n"; }
 fail() { printf "\033[${COL}G${RED}Failed${RESET}\n"; }
@@ -243,26 +245,32 @@ fi
 
 # ---- build + run a full suite (mandatory or bonus) --------------------------
 run_suite() {
-    local pfx=$1 basic=$2 leak=$3 buildvar=$4 runvar=$5
+    local pfx=$1 basics=$2 leaks=$3 buildvar=$4 runvar=$5
     shift 5
     local srcs="$*"
     local tag=${pfx// /_}
-    local bs bin rc logs="" build_fail=0 run_fail=0
+    local bs bin rc src base logs="" build_fail=0 run_fail=0
 
     printf "🔨 Building ${pfx}tests..."
-    for bs in $BUFFER_SIZES; do
-        bin="$TMP_DIR/${tag}basic_bs${bs}"
-        cc -Wall -Wextra -Wno-unused-result -DVERBOSE=$VERBOSE -DBUFFER_SIZE=$bs $IDIRS \
-            "$TESTER_NAME/$basic" "$TESTER_NAME/utils.c" $srcs \
-            -Wl,--wrap=malloc,--wrap=read -o "$bin" 2> "$bin.err" \
-            || { build_fail=1; logs+="[$basic BUFFER_SIZE=$bs]\n$(cat "$bin.err")\n"; }
+    for src in $basics; do
+        base=$(basename "$src" .c)
+        for bs in $BUFFER_SIZES; do
+            bin="$TMP_DIR/${tag}${base}_bs${bs}"
+            cc -Wall -Wextra -Wno-unused-result -DVERBOSE=$VERBOSE -DBUFFER_SIZE=$bs $IDIRS \
+                "$TESTER_NAME/$src" "$TESTER_NAME/utils.c" $srcs \
+                -Wl,--wrap=malloc,--wrap=read -o "$bin" 2> "$bin.err" \
+                || { build_fail=1; logs+="[$src BUFFER_SIZE=$bs]\n$(cat "$bin.err")\n"; }
+        done
     done
-    for bs in $VG_SIZES; do
-        bin="$TMP_DIR/${tag}leak_bs${bs}"
-        cc -Wall -Wextra -Wno-unused-result -DBUFFER_SIZE=$bs $IDIRS \
-            "$TESTER_NAME/$leak" "$TESTER_NAME/utils.c" $srcs \
-            -Wl,--wrap=malloc,--wrap=read -o "$bin" 2> "$bin.err" \
-            || { build_fail=1; logs+="[$leak BUFFER_SIZE=$bs]\n$(cat "$bin.err")\n"; }
+    for src in $leaks; do
+        base=$(basename "$src" .c)
+        for bs in $VG_SIZES; do
+            bin="$TMP_DIR/${tag}${base}_bs${bs}"
+            cc -Wall -Wextra -Wno-unused-result -DBUFFER_SIZE=$bs $IDIRS \
+                "$TESTER_NAME/$src" "$TESTER_NAME/utils.c" $srcs \
+                -Wl,--wrap=malloc,--wrap=read -o "$bin" 2> "$bin.err" \
+                || { build_fail=1; logs+="[$src BUFFER_SIZE=$bs]\n$(cat "$bin.err")\n"; }
+        done
     done
     if [[ $build_fail -ne 0 ]]; then
         eval "$buildvar=1"
@@ -274,26 +282,32 @@ run_suite() {
 
     printf "🧪 Running ${pfx}tests..."
     logs=""
-    for bs in $BUFFER_SIZES; do
-        bin="$TMP_DIR/${tag}basic_bs${bs}"
-        timeout 60 "$bin" > "$bin.log" 2>&1
-        rc=$?
-        [[ $rc -ne 0 ]] && run_fail=1
-        if [[ $rc -ne 0 || $VERBOSE -eq 1 ]]; then
-            logs+="\n${YELLOW}── functional (BUFFER_SIZE=$bs) ──${RESET}\n$(cat "$bin.log")\n"
-        fi
-        [[ $rc -eq 124 ]] && logs+="${RED}(timed out)${RESET}\n"
+    for src in $basics; do
+        base=$(basename "$src" .c)
+        for bs in $BUFFER_SIZES; do
+            bin="$TMP_DIR/${tag}${base}_bs${bs}"
+            timeout 60 "$bin" > "$bin.log" 2>&1
+            rc=$?
+            [[ $rc -ne 0 ]] && run_fail=1
+            if [[ $rc -ne 0 || $VERBOSE -eq 1 ]]; then
+                logs+="\n${YELLOW}── $base (BUFFER_SIZE=$bs) ──${RESET}\n$(cat "$bin.log")\n"
+            fi
+            [[ $rc -eq 124 ]] && logs+="${RED}(timed out)${RESET}\n"
+        done
     done
-    for bs in $VG_SIZES; do
-        bin="$TMP_DIR/${tag}leak_bs${bs}"
-        timeout 120 valgrind --leak-check=full --show-leak-kinds=all \
-            --errors-for-leak-kinds=all --error-exitcode=42 --track-origins=yes \
-            "$bin" >/dev/null 2>"$bin.vglog"
-        rc=$?
-        [[ $rc -ne 0 ]] && run_fail=1
-        if [[ $rc -ne 0 || $VERBOSE -eq 1 ]]; then
-            logs+="\n${YELLOW}── valgrind (BUFFER_SIZE=$bs) ──${RESET}\n$(cat "$bin.vglog")\n"
-        fi
+    for src in $leaks; do
+        base=$(basename "$src" .c)
+        for bs in $VG_SIZES; do
+            bin="$TMP_DIR/${tag}${base}_bs${bs}"
+            timeout 120 valgrind --leak-check=full --show-leak-kinds=all \
+                --errors-for-leak-kinds=all --error-exitcode=42 --track-origins=yes \
+                "$bin" >/dev/null 2>"$bin.vglog"
+            rc=$?
+            [[ $rc -ne 0 ]] && run_fail=1
+            if [[ $rc -ne 0 || $VERBOSE -eq 1 ]]; then
+                logs+="\n${YELLOW}── $base valgrind (BUFFER_SIZE=$bs) ──${RESET}\n$(cat "$bin.vglog")\n"
+            fi
+        done
     done
     if [[ $run_fail -ne 0 ]]; then
         eval "$runvar=1"
@@ -381,9 +395,7 @@ if [[ $BONUS_VERSION -eq 1 ]]; then
         echo -e "Global variables are forbidden:\n$BONUS_GLOBALS_ERRORS"
     fi
 
-    run_suite "bonus mandatory " "basic_tests.c" "leak_tests.c" \
-        BONUS_BUILD_RES BONUS_RUN_RES "get_next_line_bonus.c get_next_line_utils_bonus.c"
-    run_suite "bonus " "basic_tests_bonus.c" "leak_tests_bonus.c" \
+    run_suite "bonus " "basic_tests.c basic_tests_bonus.c" "leak_tests.c leak_tests_bonus.c" \
         BONUS_BUILD_RES BONUS_RUN_RES "get_next_line_bonus.c get_next_line_utils_bonus.c"
 fi
 
