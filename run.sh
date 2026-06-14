@@ -44,7 +44,7 @@ BONUS_RUN_RES=0
 # ---- alignment helpers ------------------------------------------------------
 # \033[44G jumps the cursor to absolute column 34 on the current line,
 # regardless of label length or emoji width — no more tab arithmetic.
-COL=35
+COL=37
 ok()   { printf "\033[${COL}G  Done\n"; }
 fail() { printf "\033[${COL}G${RED}Failed${RESET}\n"; }
 
@@ -61,22 +61,22 @@ print_result() {
         && -z "$EXTERN_ERRORS" && -z "$GLOBALS_ERRORS" && $BUILD_RES -eq 0 && $RUN_RES -eq 0 \
         && -z "$BONUS_EXTERN_ERRORS" && -z "$BONUS_GLOBALS_ERRORS" \
         && $BONUS_BUILD_RES -eq 0 && $BONUS_RUN_RES -eq 0 ]]; then
-        echo -e "${GREEN}╔══════════════════════════════════════╗${RESET}"
-        echo -e "${GREEN}║          OH MY, YOU PASSED!          ║${RESET}"
-        echo -e "${GREEN}╚══════════════════════════════════════╝${RESET}"
+        echo -e "${GREEN}╔════════════════════════════════════════╗${RESET}"
+        echo -e "${GREEN}║           OH MY, YOU PASSED!           ║${RESET}"
+        echo -e "${GREEN}╚════════════════════════════════════════╝${RESET}"
     else
-        echo -e "${RED}╔══════════════════════════════════════╗${RESET}"
-        echo -e "${RED}║         OH NO... YOU FAILED!         ║${RESET}"
-        echo -e "${RED}╚══════════════════════════════════════╝${RESET}"
+        echo -e "${RED}╔════════════════════════════════════════╗${RESET}"
+        echo -e "${RED}║          OH NO... YOU FAILED!          ║${RESET}"
+        echo -e "${RED}╚════════════════════════════════════════╝${RESET}"
     fi
 }
 
 trap 'print_result; cleanup' EXIT INT TERM
 
 echo ""
-echo -e "${PINK}╔══════════════════════════════════════╗${RESET}"
-echo -e "${PINK}║             GNL-FAIRY 🧚             ║${RESET}"
-echo -e "${PINK}╚══════════════════════════════════════╝${RESET}"
+echo -e "${PINK}╔════════════════════════════════════════╗${RESET}"
+echo -e "${PINK}║              GNL-FAIRY 🧚              ║${RESET}"
+echo -e "${PINK}╚════════════════════════════════════════╝${RESET}"
 echo
 
 # ---- norm -------------------------------------------------------------------
@@ -99,9 +99,9 @@ BONUS_SRC=$(find . -type d -name "$TESTER_NAME" -prune -o \
     -name "get_next_line_bonus.c" -type f -print | head -1)
 if [[ -n "$BONUS_SRC" ]]; then
     BONUS_VERSION=1
-    printf "\033[36GBonus\n"
+    printf "\033[38GBonus\n"
 else
-    printf "\033[32G${YELLOW}Mandatory${RESET}\n"
+    printf "\033[34G${YELLOW}Mandatory${RESET}\n"
 fi
 
 # ---- prototype --------------------------------------------------------------
@@ -329,6 +329,8 @@ if [[ $BONUS_VERSION -eq 1 ]]; then
         echo -e "Global variables are forbidden:\n$BONUS_GLOBALS_ERRORS"
     fi
 
+    run_suite "bonus mandatory " "basic_tests.c" "leak_tests.c" \
+        BONUS_BUILD_RES BONUS_RUN_RES "$BONUS_SRCS"
     run_suite "bonus " "basic_tests_bonus.c" "leak_tests_bonus.c" \
         BONUS_BUILD_RES BONUS_RUN_RES "$BONUS_SRCS"
 fi
