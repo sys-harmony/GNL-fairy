@@ -95,64 +95,54 @@ fi
 
 # ---- version ----------------------------------------------------------------
 printf "🔖 Checking version..."
-BONUS_SRC=$(find . -type d -name "$TESTER_NAME" -prune -o \
-    -name "get_next_line_bonus.c" -type f -print | head -1)
-if [[ -n "$BONUS_SRC" ]]; then
+if [ -f "get_next_line_bonus.c" ]; then
     BONUS_VERSION=1
     printf "\033[38GBonus\n"
 else
     printf "\033[34G${YELLOW}Mandatory${RESET}\n"
 fi
 
+# ---- locate & verify mandatory files -----------------------------------------
+printf "📂 Checking files..."
+
+# Ensure all mandatory files are exactly at the root of the repository
+if [ ! -f "get_next_line.c" ] || [ ! -f "get_next_line_utils.c" ] || [ ! -f "get_next_line.h" ]; then
+    SRC_RES=1
+    fail
+    echo ""
+    echo "Missing one or more mandatory files at the root of the repository:"
+    [ ! -f "get_next_line.c" ] && echo "- get_next_line.c"
+    [ ! -f "get_next_line_utils.c" ] && echo "- get_next_line_utils.c"
+    [ ! -f "get_next_line.h" ] && echo "- get_next_line.h"
+    echo ""
+    exit 1
+fi
+MAND_SRCS="get_next_line.c get_next_line_utils.c"
+ok
+
 # ---- prototype --------------------------------------------------------------
 printf "📋 Checking prototype..."
 PROTO_REGEX='(^|[^_[:alnum:]])char[[:space:]]*\*[[:space:]]*get_next_line[[:space:]]*'
 PROTO_REGEX+='\([[:space:]]*int[[:space:]]+([A-Za-z_][A-Za-z0-9_]*)?[[:space:]]*\)'
-PROTO_HITS=$(find . -type d -name "$TESTER_NAME" -prune -o \
-    -name "*.h" -type f -print \
-    | xargs -r grep -lP "$PROTO_REGEX" 2>/dev/null)
-if [ -z "$PROTO_HITS" ]; then
+
+# Look for the exact prototype strictly inside get_next_line.h
+if ! grep -qP "$PROTO_REGEX" "get_next_line.h"; then
     PROTO_RES=1
     fail
     echo ""
-    echo -e "Missing or malformed prototype, expected:\nchar\t*get_next_line(int fd)"
+    echo -e "Missing or malformed prototype in get_next_line.h, expected:\nchar\t*get_next_line(int fd)"
     echo ""
 else
     ok
 fi
 
-# header include dirs (so the student sources resolve their own #include)
+# The include directory is simply the current directory (.)
 IDIRS="-I."
-for h in $PROTO_HITS; do
-    d=$(dirname "$h")
-    case " $IDIRS " in
-        *" -I$d "*) ;;
-        *) IDIRS="$IDIRS -I$d" ;;
-    esac
-done
-
-# ---- locate sources ---------------------------------------------------------
-printf "📂 Checking sources..."
-GNL_SRC=$(find . -type d -name "$TESTER_NAME" -prune -o \
-    -name "get_next_line.c" -type f -print | head -1)
-GNL_UTILS=$(find . -type d -name "$TESTER_NAME" -prune -o \
-    -name "get_next_line_utils.c" -type f -print | head -1)
-if [[ -z "$GNL_SRC" || -z "$GNL_UTILS" ]]; then
-    SRC_RES=1
-    fail
-    echo ""
-    [[ -z "$GNL_SRC" ]] && echo "Missing get_next_line.c"
-    [[ -z "$GNL_UTILS" ]] && echo "Missing get_next_line_utils.c"
-    echo ""
-    exit 1
-fi
-MAND_SRCS="$GNL_SRC $GNL_UTILS"
-ok
 
 # ---- default BUFFER_SIZE (compiles without -D) ------------------------------
 printf "🎛️  Checking default BUFFER_SIZE..."
-if cc -Wall -Wextra -Werror $IDIRS -c "$GNL_SRC" -o "$TMP_DIR/gnl.o" 2> "$TMP_DIR/def.err" \
-    && cc -Wall -Wextra -Werror $IDIRS -c "$GNL_UTILS" -o "$TMP_DIR/gnl_utils.o" 2>> "$TMP_DIR/def.err"; then
+if cc -Wall -Wextra -Werror $IDIRS -c "get_next_line.c" -o "$TMP_DIR/gnl.o" 2> "$TMP_DIR/def.err" \
+    && cc -Wall -Wextra -Werror $IDIRS -c "get_next_line_utils.c" -o "$TMP_DIR/gnl_utils.o" 2>> "$TMP_DIR/def.err"; then
     ok
 else
     DEFAULT_RES=1
@@ -284,21 +274,49 @@ run_suite "" "basic_tests.c" "leak_tests.c" BUILD_RES RUN_RES "$MAND_SRCS"
 
 # ---- bonus ------------------------------------------------------------------
 if [[ $BONUS_VERSION -eq 1 ]]; then
-    printf "📂 Checking bonus sources..."
-    GNL_UTILS_BONUS=$(find . -type d -name "$TESTER_NAME" -prune -o \
-        -name "get_next_line_utils_bonus.c" -type f -print | head -1)
-    if [[ -z "$GNL_UTILS_BONUS" ]]; then
+    
+    printf "📂 Checking bonus files..."
+    # Ensure all required bonus files are exactly at the root of the repository
+    if [ ! -f "get_next_line_bonus.c" ] || [ ! -f "get_next_line_utils_bonus.c" ] || [ ! -f "get_next_line_bonus.h" ]; then
         BONUS_BUILD_RES=1
         fail
         echo ""
-        echo "Missing get_next_line_utils_bonus.c"
+        echo "Missing one or more bonus files at the root of the repository:"
+        [ ! -f "get_next_line_bonus.c" ] && echo "- get_next_line_bonus.c"
+        [ ! -f "get_next_line_utils_bonus.c" ] && echo "- get_next_line_utils_bonus.c"
+        [ ! -f "get_next_line_bonus.h" ] && echo "- get_next_line_bonus.h"
         exit 1
     fi
-    BONUS_SRCS="$BONUS_SRC $GNL_UTILS_BONUS"
     ok
 
-    cc -Wall -Wextra -Werror $IDIRS -c "$BONUS_SRC" -o "$TMP_DIR/gnlb.o" 2>/dev/null
-    cc -Wall -Wextra -Werror $IDIRS -c "$GNL_UTILS_BONUS" -o "$TMP_DIR/gnlb_utils.o" 2>/dev/null
+    # ---- bonus prototype ----------------------------------------------------
+    printf "📋 Checking bonus prototype..."
+    
+    # Look for the exact prototype strictly inside get_next_line_bonus.h
+    if ! grep -qP "$PROTO_REGEX" "get_next_line_bonus.h"; then
+        BONUS_BUILD_RES=1
+        fail
+        echo ""
+        echo -e "Missing or malformed prototype in get_next_line_bonus.h, expected:\nchar\t*get_next_line(int fd)"
+        echo ""
+    else
+        ok
+    fi
+
+    # ---- bonus default BUFFER_SIZE (compiles without -D) --------------------
+    printf "🎛️  Checking bonus BUFFER_SIZE..."
+    if cc -Wall -Wextra -Werror $IDIRS -c "get_next_line_bonus.c" -o "$TMP_DIR/gnlb.o" 2> "$TMP_DIR/bonus_def.err" \
+        && cc -Wall -Wextra -Werror $IDIRS -c "get_next_line_utils_bonus.c" -o "$TMP_DIR/gnlb_utils.o" 2>> "$TMP_DIR/bonus_def.err"; then
+        ok
+    else
+        BONUS_BUILD_RES=1
+        fail
+        echo ""
+        echo "Bonus project must compile WITHOUT -D BUFFER_SIZE (provide a default):"
+        echo -e "$(cat "$TMP_DIR/bonus_def.err")"
+        echo ""
+        exit 1
+    fi
 
     printf "🔍 Checking bonus externals..."
     collect_defined_syms "$TMP_DIR/gnlb.o" "$TMP_DIR/gnlb_utils.o"
@@ -330,9 +348,9 @@ if [[ $BONUS_VERSION -eq 1 ]]; then
     fi
 
     run_suite "bonus mandatory " "basic_tests.c" "leak_tests.c" \
-        BONUS_BUILD_RES BONUS_RUN_RES "$BONUS_SRCS"
+        BONUS_BUILD_RES BONUS_RUN_RES "get_next_line_bonus.c get_next_line_utils_bonus.c"
     run_suite "bonus " "basic_tests_bonus.c" "leak_tests_bonus.c" \
-        BONUS_BUILD_RES BONUS_RUN_RES "$BONUS_SRCS"
+        BONUS_BUILD_RES BONUS_RUN_RES "get_next_line_bonus.c get_next_line_utils_bonus.c"
 fi
 
 exit 0
