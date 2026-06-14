@@ -79,20 +79,6 @@ echo -e "${PINK}║              GNL-FAIRY 🧚              ║${RESET}"
 echo -e "${PINK}╚════════════════════════════════════════╝${RESET}"
 echo
 
-# ---- norm -------------------------------------------------------------------
-printf "📝 Checking norm..."
-NORM_OUTPUT=$(find . -type d -name "$TESTER_NAME" -prune -o \
-    \( -name "*.c" -o -name "*.h" \) -type f -print | xargs -r norminette 2>&1)
-if echo "$NORM_OUTPUT" | grep -q "Error"; then
-    NORM_RES=1
-    fail
-    echo ""
-    echo "$NORM_OUTPUT" | grep "Error"
-    echo ""
-else
-    ok
-fi
-
 # ---- version ----------------------------------------------------------------
 printf "🔖 Checking version..."
 if [ -f "get_next_line_bonus.c" ]; then
@@ -102,10 +88,10 @@ else
     printf "\033[34G${YELLOW}Mandatory${RESET}\n"
 fi
 
-# ---- locate & verify mandatory files -----------------------------------------
+# ---- locate & verify repository files ---------------------------------------
 printf "📂 Checking files..."
 
-# Ensure all mandatory files are exactly at the root of the repository
+# 1. Ensure all mandatory files are exactly at the root
 if [ ! -f "get_next_line.c" ] || [ ! -f "get_next_line_utils.c" ] || [ ! -f "get_next_line.h" ]; then
     SRC_RES=1
     fail
@@ -118,7 +104,55 @@ if [ ! -f "get_next_line.c" ] || [ ! -f "get_next_line_utils.c" ] || [ ! -f "get
     exit 1
 fi
 MAND_SRCS="get_next_line.c get_next_line_utils.c"
+
+# 2. Ensure NO extra .c or .h files exist anywhere in the repository
+ALLOWED_FILES="get_next_line.c get_next_line_utils.c get_next_line.h"
+if [[ $BONUS_VERSION -eq 1 ]]; then
+    ALLOWED_FILES="$ALLOWED_FILES get_next_line_bonus.c get_next_line_utils_bonus.c get_next_line_bonus.h"
+fi
+
+EXTRA_FILES=""
+FOUND_FILES=$(find . -type d -name "$TESTER_NAME" -prune -o -type f \( -name "*.c" -o -name "*.h" \) -print)
+
+for file in $FOUND_FILES; do
+    clean_name=${file#./}
+    if [[ ! " $ALLOWED_FILES " =~ " $clean_name " ]]; then
+        EXTRA_FILES="$EXTRA_FILES $clean_name"
+    fi
+done
+
+if [[ -n "$EXTRA_FILES" ]]; then
+    SRC_RES=1
+    fail
+    echo ""
+    echo "Forbidden extra .c or .h files found in the repository:"
+    for f in $EXTRA_FILES; do
+        echo "- $f"
+    done
+    echo "Please remove them to match the subject's strict turn-in list."
+    echo ""
+    exit 1
+fi
+
+# If both checks pass, we print "Done" once for the whole file checking process
 ok
+
+# ---- norm -------------------------------------------------------------------
+printf "📝 Checking norm..."
+
+# Since the previous check guarantees there are no hidden files in subfolders,
+# we can safely and quickly run norminette only on the root files.
+NORM_OUTPUT=$(norminette *.[ch] 2>&1)
+
+if echo "$NORM_OUTPUT" | grep -q "Error"; then
+    NORM_RES=1
+    fail
+    echo ""
+    echo "$NORM_OUTPUT" | grep "Error"
+    echo ""
+else
+    ok
+fi
 
 # ---- prototype --------------------------------------------------------------
 printf "📋 Checking prototype..."
