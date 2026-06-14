@@ -23,8 +23,6 @@ cd "$PROJECT_DIR" || exit 1
 
 TESTER_NAME=$(basename "$TESTER_DIR")
 
-# get_next_line behaviour is independent of BUFFER_SIZE, so we recompile and
-# replay the same suite for several sizes (including the subject's edge values).
 BUFFER_SIZES="1 42 9999 10000000"
 VG_SIZES="1 42 9999"
 
@@ -43,11 +41,17 @@ BONUS_GLOBALS_ERRORS=""
 BONUS_BUILD_RES=0
 BONUS_RUN_RES=0
 
+# ---- alignment helpers ------------------------------------------------------
+# \033[44G jumps the cursor to absolute column 34 on the current line,
+# regardless of label length or emoji width — no more tab arithmetic.
+COL=35
+ok()   { printf "\033[${COL}G  Done\n"; }
+fail() { printf "\033[${COL}G${RED}Failed${RESET}\n"; }
+
 cleanup() {
     echo ""
-    echo -e -n "🧹 Cleaning up..."
-    rm -rf "$TMP_DIR"
-    echo -e "\t\t  Done"
+    printf "🧹 Cleaning up..."
+    ok
     echo ""
 }
 
@@ -57,51 +61,51 @@ print_result() {
         && -z "$EXTERN_ERRORS" && -z "$GLOBALS_ERRORS" && $BUILD_RES -eq 0 && $RUN_RES -eq 0 \
         && -z "$BONUS_EXTERN_ERRORS" && -z "$BONUS_GLOBALS_ERRORS" \
         && $BONUS_BUILD_RES -eq 0 && $BONUS_RUN_RES -eq 0 ]]; then
-        echo -e "${GREEN}╔════════════════════════════════════╗${RESET}"
-        echo -e "${GREEN}║         OH MY, YOU PASSED!         ║${RESET}"
-        echo -e "${GREEN}╚════════════════════════════════════╝${RESET}"
+        echo -e "${GREEN}╔══════════════════════════════════════╗${RESET}"
+        echo -e "${GREEN}║          OH MY, YOU PASSED!          ║${RESET}"
+        echo -e "${GREEN}╚══════════════════════════════════════╝${RESET}"
     else
-        echo -e "${RED}╔════════════════════════════════════╗${RESET}"
-        echo -e "${RED}║        OH NO... YOU FAILED!        ║${RESET}"
-        echo -e "${RED}╚════════════════════════════════════╝${RESET}"
+        echo -e "${RED}╔══════════════════════════════════════╗${RESET}"
+        echo -e "${RED}║         OH NO... YOU FAILED!         ║${RESET}"
+        echo -e "${RED}╚══════════════════════════════════════╝${RESET}"
     fi
 }
 
 trap 'print_result; cleanup' EXIT INT TERM
 
 echo ""
-echo -e "${PINK}╔════════════════════════════════════╗${RESET}"
-echo -e "${PINK}║            GNL-FAIRY 🧚            ║${RESET}"
-echo -e "${PINK}╚════════════════════════════════════╝${RESET}"
+echo -e "${PINK}╔══════════════════════════════════════╗${RESET}"
+echo -e "${PINK}║             GNL-FAIRY 🧚             ║${RESET}"
+echo -e "${PINK}╚══════════════════════════════════════╝${RESET}"
 echo
 
 # ---- norm -------------------------------------------------------------------
-echo -e -n "📝 Checking norm..."
+printf "📝 Checking norm..."
 NORM_OUTPUT=$(find . -type d -name "$TESTER_NAME" -prune -o \
     \( -name "*.c" -o -name "*.h" \) -type f -print | xargs -r norminette 2>&1)
 if echo "$NORM_OUTPUT" | grep -q "Error"; then
     NORM_RES=1
-    echo -e "\t\t${RED}Failed${RESET}"
+    fail
     echo ""
     echo "$NORM_OUTPUT" | grep "Error"
     echo ""
 else
-    echo -e "\t\t  Done"
+    ok
 fi
 
 # ---- version ----------------------------------------------------------------
-echo -e -n "🔖 Checking version..."
+printf "🔖 Checking version..."
 BONUS_SRC=$(find . -type d -name "$TESTER_NAME" -prune -o \
     -name "get_next_line_bonus.c" -type f -print | head -1)
 if [[ -n "$BONUS_SRC" ]]; then
     BONUS_VERSION=1
-    echo -e "\t\t Bonus"
+    printf "\033[36GBonus\n"
 else
-    echo -e "\t     ${YELLOW}Mandatory${RESET}"
+    printf "\033[32G${YELLOW}Mandatory${RESET}\n"
 fi
 
 # ---- prototype --------------------------------------------------------------
-echo -e -n "📋 Checking prototype..."
+printf "📋 Checking prototype..."
 PROTO_REGEX='(^|[^_[:alnum:]])char[[:space:]]*\*[[:space:]]*get_next_line[[:space:]]*'
 PROTO_REGEX+='\([[:space:]]*int[[:space:]]+([A-Za-z_][A-Za-z0-9_]*)?[[:space:]]*\)'
 PROTO_HITS=$(find . -type d -name "$TESTER_NAME" -prune -o \
@@ -109,12 +113,12 @@ PROTO_HITS=$(find . -type d -name "$TESTER_NAME" -prune -o \
     | xargs -r grep -lP "$PROTO_REGEX" 2>/dev/null)
 if [ -z "$PROTO_HITS" ]; then
     PROTO_RES=1
-    echo -e "\t${RED}Failed${RESET}"
+    fail
     echo ""
     echo -e "Missing or malformed prototype, expected:\nchar\t*get_next_line(int fd)"
     echo ""
 else
-    echo -e "\t  Done"
+    ok
 fi
 
 # header include dirs (so the student sources resolve their own #include)
@@ -128,14 +132,14 @@ for h in $PROTO_HITS; do
 done
 
 # ---- locate sources ---------------------------------------------------------
-echo -e -n "📂 Checking sources..."
+printf "📂 Checking sources..."
 GNL_SRC=$(find . -type d -name "$TESTER_NAME" -prune -o \
     -name "get_next_line.c" -type f -print | head -1)
 GNL_UTILS=$(find . -type d -name "$TESTER_NAME" -prune -o \
     -name "get_next_line_utils.c" -type f -print | head -1)
 if [[ -z "$GNL_SRC" || -z "$GNL_UTILS" ]]; then
     SRC_RES=1
-    echo -e "\t\t${RED}Failed${RESET}"
+    fail
     echo ""
     [[ -z "$GNL_SRC" ]] && echo "Missing get_next_line.c"
     [[ -z "$GNL_UTILS" ]] && echo "Missing get_next_line_utils.c"
@@ -143,16 +147,16 @@ if [[ -z "$GNL_SRC" || -z "$GNL_UTILS" ]]; then
     exit 1
 fi
 MAND_SRCS="$GNL_SRC $GNL_UTILS"
-echo -e "\t\t  Done"
+ok
 
 # ---- default BUFFER_SIZE (compiles without -D) ------------------------------
-echo -e -n "🎛️  Checking default BUFFER_SIZE..."
+printf "🎛️  Checking default BUFFER_SIZE..."
 if cc -Wall -Wextra -Werror $IDIRS -c "$GNL_SRC" -o "$TMP_DIR/gnl.o" 2> "$TMP_DIR/def.err" \
     && cc -Wall -Wextra -Werror $IDIRS -c "$GNL_UTILS" -o "$TMP_DIR/gnl_utils.o" 2>> "$TMP_DIR/def.err"; then
-    echo -e "  Done"
+    ok
 else
     DEFAULT_RES=1
-    echo -e "${RED}Failed${RESET}"
+    fail
     echo ""
     echo "Project must compile WITHOUT -D BUFFER_SIZE (provide a default):"
     echo -e "$(cat "$TMP_DIR/def.err")"
@@ -179,9 +183,6 @@ check_obj() {
     done
     [[ -n "$forbidden" ]] && echo "$(basename "$obj" .o): forbidden:$forbidden"
 }
-# A non-static (global) variable shows as an UPPERCASE data symbol in nm
-# (B/C/D/G/S); the subject forbids globals while requiring a static variable
-# (which is lowercase, hence ignored here).
 check_globals() {
     local obj=$1
     local g
@@ -189,35 +190,34 @@ check_globals() {
     [[ -n "$g" ]] && echo "$(basename "$obj" .o): global(s):$g"
 }
 
-echo -e -n "🔍 Checking externals..."
+printf "🔍 Checking externals..."
 collect_defined_syms "$TMP_DIR/gnl.o" "$TMP_DIR/gnl_utils.o"
 for obj in "$TMP_DIR/gnl.o" "$TMP_DIR/gnl_utils.o"; do
     result=$(check_obj "$obj")
     [[ -n "$result" ]] && EXTERN_ERRORS="$EXTERN_ERRORS$result\n"
 done
 if [[ -z "$EXTERN_ERRORS" ]]; then
-    echo -e "\t  Done"
+    ok
 else
-    echo -e "\t${RED}Failed${RESET}"
+    fail
     echo ""
     echo -e "$EXTERN_ERRORS"
 fi
 
-echo -e -n "🌍 Checking globals..."
+printf "🌍 Checking globals..."
 for obj in "$TMP_DIR/gnl.o" "$TMP_DIR/gnl_utils.o"; do
     result=$(check_globals "$obj")
     [[ -n "$result" ]] && GLOBALS_ERRORS="$GLOBALS_ERRORS$result\n"
 done
 if [[ -z "$GLOBALS_ERRORS" ]]; then
-    echo -e "\t\t  Done"
+    ok
 else
-    echo -e "\t\t${RED}Failed${RESET}"
+    fail
     echo ""
     echo -e "Global variables are forbidden:\n$GLOBALS_ERRORS"
 fi
 
 # ---- build + run a full suite (mandatory or bonus) --------------------------
-# args: <prefix> <basic_src> <leak_src> <build_var> <run_var> <student srcs...>
 run_suite() {
     local pfx=$1 basic=$2 leak=$3 buildvar=$4 runvar=$5
     shift 5
@@ -225,7 +225,7 @@ run_suite() {
     local tag=${pfx// /_}
     local bs bin rc logs="" build_fail=0 run_fail=0
 
-    echo -e -n "🔨 Building ${pfx}tests..."
+    printf "🔨 Building ${pfx}tests..."
     for bs in $BUFFER_SIZES; do
         bin="$TMP_DIR/${tag}basic_bs${bs}"
         cc -Wall -Wextra -Wno-unused-result -DVERBOSE=$VERBOSE -DBUFFER_SIZE=$bs $IDIRS \
@@ -242,13 +242,13 @@ run_suite() {
     done
     if [[ $build_fail -ne 0 ]]; then
         eval "$buildvar=1"
-        echo -e "\t\t${RED}Failed${RESET}"
+        fail
         echo -e "$logs"
         return
     fi
-    echo -e "\t\t  Done"
+    ok
 
-    echo -e -n "🧪 Running ${pfx}tests..."
+    printf "🧪 Running ${pfx}tests..."
     logs=""
     for bs in $BUFFER_SIZES; do
         bin="$TMP_DIR/${tag}basic_bs${bs}"
@@ -273,9 +273,9 @@ run_suite() {
     done
     if [[ $run_fail -ne 0 ]]; then
         eval "$runvar=1"
-        echo -e "\t\t${RED}Failed${RESET}"
+        fail
     else
-        echo -e "\t\t  Done"
+        ok
     fi
     [[ -n "$logs" ]] && echo -e "$logs"
 }
@@ -284,24 +284,23 @@ run_suite "" "basic_tests.c" "leak_tests.c" BUILD_RES RUN_RES "$MAND_SRCS"
 
 # ---- bonus ------------------------------------------------------------------
 if [[ $BONUS_VERSION -eq 1 ]]; then
-    echo ""
-    echo -e -n "📂 Checking bonus sources..."
+    printf "📂 Checking bonus sources..."
     GNL_UTILS_BONUS=$(find . -type d -name "$TESTER_NAME" -prune -o \
         -name "get_next_line_utils_bonus.c" -type f -print | head -1)
     if [[ -z "$GNL_UTILS_BONUS" ]]; then
         BONUS_BUILD_RES=1
-        echo -e "\t${RED}Failed${RESET}"
+        fail
         echo ""
         echo "Missing get_next_line_utils_bonus.c"
         exit 1
     fi
     BONUS_SRCS="$BONUS_SRC $GNL_UTILS_BONUS"
-    echo -e "\t  Done"
+    ok
 
     cc -Wall -Wextra -Werror $IDIRS -c "$BONUS_SRC" -o "$TMP_DIR/gnlb.o" 2>/dev/null
     cc -Wall -Wextra -Werror $IDIRS -c "$GNL_UTILS_BONUS" -o "$TMP_DIR/gnlb_utils.o" 2>/dev/null
 
-    echo -e -n "🔍 Checking bonus externals..."
+    printf "🔍 Checking bonus externals..."
     collect_defined_syms "$TMP_DIR/gnlb.o" "$TMP_DIR/gnlb_utils.o"
     for obj in "$TMP_DIR/gnlb.o" "$TMP_DIR/gnlb_utils.o"; do
         [[ -f "$obj" ]] || continue
@@ -309,23 +308,23 @@ if [[ $BONUS_VERSION -eq 1 ]]; then
         [[ -n "$result" ]] && BONUS_EXTERN_ERRORS="$BONUS_EXTERN_ERRORS$result\n"
     done
     if [[ -z "$BONUS_EXTERN_ERRORS" ]]; then
-        echo -e "  Done"
+        ok
     else
-        echo -e "${RED}Failed${RESET}"
+        fail
         echo ""
         echo -e "$BONUS_EXTERN_ERRORS"
     fi
 
-    echo -e -n "🌍 Checking bonus globals..."
+    printf "🌍 Checking bonus globals..."
     for obj in "$TMP_DIR/gnlb.o" "$TMP_DIR/gnlb_utils.o"; do
         [[ -f "$obj" ]] || continue
         result=$(check_globals "$obj")
         [[ -n "$result" ]] && BONUS_GLOBALS_ERRORS="$BONUS_GLOBALS_ERRORS$result\n"
     done
     if [[ -z "$BONUS_GLOBALS_ERRORS" ]]; then
-        echo -e "  Done"
+        ok
     else
-        echo -e "${RED}Failed${RESET}"
+        fail
         echo ""
         echo -e "Global variables are forbidden:\n$BONUS_GLOBALS_ERRORS"
     fi
